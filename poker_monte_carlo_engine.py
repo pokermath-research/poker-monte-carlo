@@ -218,10 +218,52 @@ def simulate_hand_vs_hand(hand1, hand2, board=None, iterations=10000, seed=None)
     eq2 = (wins2 + (ties / 2.0)) / iterations * 100.0
     return eq1, eq2, wins1, wins2, ties
 
+def exact_board_enumeration(hand1, hand2, board):
+    """
+    Computes EXACT ground-truth equity via exhaustive combinatorial enumeration
+    over all remaining board runouts (flop: 990 runouts, turn: 44 runouts, river: 1 showdown).
+    Used as the deterministic benchmark to prove zero statistical bias of Monte Carlo sampling.
+    """
+    h1 = parse_cards(hand1)
+    h2 = parse_cards(hand2)
+    bd = parse_cards(board)
+
+    if len(bd) < 3 or len(bd) > 5:
+        raise ValueError(f"exact_board_enumeration requires 3 (flop), 4 (turn), or 5 (river) board cards, got {len(bd)}")
+
+    all_cards = h1 + h2 + bd
+    if len(set(all_cards)) != len(all_cards):
+        dups = [c for c, count in Counter(all_cards).items() if count > 1]
+        raise ValueError(f"Duplicate card detected: {dups}")
+
+    cards_needed = 5 - len(bd)
+    full_deck = [r + s for r in RANKS for s in SUITS]
+    dead_cards = set(all_cards)
+    remaining_deck = [c for c in full_deck if c not in dead_cards]
+
+    w1, w2, ties = 0, 0, 0
+    runouts = list(itertools.combinations(remaining_deck, cards_needed))
+    total_permutations = len(runouts)
+
+    for runout in runouts:
+        full_board = bd + list(runout)
+        s1 = evaluate_7card(h1 + full_board)
+        s2 = evaluate_7card(h2 + full_board)
+        if s1 > s2:
+            w1 += 1
+        elif s2 > s1:
+            w2 += 1
+        else:
+            ties += 1
+
+    eq1 = (w1 + (ties / 2.0)) / total_permutations * 100.0
+    eq2 = (w2 + (ties / 2.0)) / total_permutations * 100.0
+    return eq1, eq2, w1, w2, ties, total_permutations
+
 def run_monte_carlo_simulation(hero_hand, villain_hand, board="", trials=100000, seed=None):
     """
     Public standard API for Monte Carlo simulation.
-    Returns structured results dictionary matching API requirements.
+    Returns structured results dictionary with Standard Error and 95% Confidence Intervals.
     """
     t0 = time.time()
     eq1, eq2, w1, w2, ties = simulate_hand_vs_hand(
@@ -233,11 +275,20 @@ def run_monte_carlo_simulation(hero_hand, villain_hand, board="", trials=100000,
     h2_parsed = parse_cards(villain_hand)
     bd_parsed = parse_cards(board)
 
+    p_hat = eq1 / 100.0
+    se = (p_hat * (1.0 - p_hat) / float(trials)) ** 0.5
+    ci95_half = 1.96 * se
+    ci95_lower = max(0.0, p_hat - ci95_half)
+    ci95_upper = min(1.0, p_hat + ci95_half)
+
     return {
-        "hero_equity": round(eq1 / 100.0, 4),
+        "hero_equity": round(p_hat, 4),
         "villain_equity": round(eq2 / 100.0, 4),
         "hero_equity_pct": round(eq1, 2),
         "villain_equity_pct": round(eq2, 2),
+        "standard_error": round(se, 6),
+        "standard_error_pct": round(se * 100.0, 4),
+        "ci_95": [round(ci95_lower * 100.0, 2), round(ci95_upper * 100.0, 2)],
         "win_rate": round(w1 / float(trials), 4),
         "villain_win_rate": round(w2 / float(trials), 4),
         "tie_rate": round(ties / float(trials), 4),

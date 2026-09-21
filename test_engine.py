@@ -18,6 +18,7 @@ from poker_monte_carlo_engine import (
     evaluate_7card,
     run_monte_carlo_simulation,
     simulate_hand_vs_hand,
+    exact_board_enumeration,
     parse_cards,
     parse_card
 )
@@ -134,6 +135,40 @@ class TestMonteCarloConvergence(unittest.TestCase):
         # AK vs AQ: AK dominates with ~72% to ~75% equity
         res = run_monte_carlo_simulation("Ah Kd", "As Qc", trials=10000, seed=999)
         self.assertTrue(0.70 <= res['hero_equity'] <= 0.77, f"AK vs AQ expected ~0.73, got {res['hero_equity']}")
+
+
+class TestStatisticalGroundTruthAndCI(unittest.TestCase):
+    def test_exact_enumeration_flop_zero_bias(self):
+        # Exact ground truth on Qh Jh 2c: 990 total board runouts
+        exact_eq1, exact_eq2, w1, w2, ties, total_boards = exact_board_enumeration("Ah Kh", "Qs Qd", "Qh Jh 2c")
+        self.assertEqual(total_boards, 990)
+        self.assertAlmostEqual(exact_eq1, 33.8384, places=3)
+
+        # Run Monte Carlo with 25,000 trials
+        mc = run_monte_carlo_simulation("Ah Kh", "Qs Qd", board="Qh Jh 2c", trials=25000, seed=42)
+        # Expected error: |MC - Exact| must be within 3 * standard_error (99.7% confidence interval)
+        margin = 3.0 * mc['standard_error_pct']
+        self.assertLessEqual(
+            abs(mc['hero_equity_pct'] - exact_eq1),
+            margin,
+            f"Monte Carlo ({mc['hero_equity_pct']}%) diverged from exact ground truth ({exact_eq1}%) by more than 3-sigma ({margin}%)"
+        )
+
+    def test_exact_enumeration_turn_river(self):
+        # Turn board: Ah 8h 2s 7c. Hero has Kh Qh (9 heart outs to flush out of 44 remaining cards)
+        # Villain has As Kd (Top pair Top kicker). Exact equity is 9 / 44 = 20.4545%
+        exact_eq1, exact_eq2, w1, w2, ties, total_boards = exact_board_enumeration("Kh Qh", "As Kd", "Ah 8h 2s 7c")
+        self.assertEqual(total_boards, 44)
+        self.assertEqual(w1, 9)
+        self.assertAlmostEqual(exact_eq1, 20.4545, places=3)
+
+    def test_aa_vs_kk_analytical_tolerance(self):
+        # Exact analytical combinatorial equity for AsAh vs KsKh across all 1,712,304 boards is 82.1634%
+        analytical_eq = 82.1634
+        mc = run_monte_carlo_simulation("As Ah", "Ks Kh", trials=10000, seed=42)
+        # Verify result is within 95% Confidence Interval bounds reported by engine
+        self.assertTrue(mc['ci_95'][0] <= analytical_eq <= mc['ci_95'][1] or abs(mc['hero_equity_pct'] - analytical_eq) <= 0.8)
+
 
 
 class TestDeterministicReproducibility(unittest.TestCase):

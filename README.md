@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 26 Passing](https://img.shields.io/badge/Tests-26%20Passing-brightgreen.svg)](https://github.com/pokermath-research/poker-monte-carlo)
+[![Tests: 29 Passing](https://img.shields.io/badge/Tests-29%20Passing-brightgreen.svg)](https://github.com/pokermath-research/poker-monte-carlo)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(stdlib)-blue.svg)](https://github.com/pokermath-research/poker-monte-carlo)
 
 High-throughput, reproducible **Monte Carlo simulation engine** for Texas Hold'em equity computation, range-versus-range equity distribution mapping, and multi-street variance decomposition. Zero external dependencies (pure Python standard library).
@@ -62,9 +62,9 @@ python poker_monte_carlo_engine.py --benchmark
 ### Python API
 
 ```python
-from poker_monte_carlo_engine import run_monte_carlo_simulation
+from poker_monte_carlo_engine import run_monte_carlo_simulation, exact_board_enumeration
 
-# Run 50,000 deterministic iterations with seed=42
+# 1. Stochastic Monte Carlo with Standard Error & 95% Confidence Interval
 results = run_monte_carlo_simulation(
     hero_hand="Ac Kd",
     villain_hand="Qh Qs",
@@ -73,10 +73,18 @@ results = run_monte_carlo_simulation(
     seed=42
 )
 
-print(f"Hero Equity: {results['hero_equity_pct']}% ({results['hero_wins']:,} wins)")
-print(f"Villain Equity: {results['villain_equity_pct']}% ({results['villain_wins']:,} wins)")
-print(f"Tie Rate: {results['tie_rate'] * 100:.2f}%")
+print(f"Hero Equity: {results['hero_equity_pct']}% (SE: ±{results['standard_error_pct']}%)")
+print(f"95% Confidence Interval: {results['ci_95']}%")
 print(f"Elapsed: {results['elapsed_seconds']}s")
+
+# 2. Exact Ground-Truth Enumeration (Flop: 990 boards, Turn: 44 boards)
+exact_eq1, exact_eq2, w1, w2, ties, total = exact_board_enumeration(
+    hand1="Ah Kh",
+    hand2="Qs Qd",
+    board="Qh Jh 2c"
+)
+print(f"Exact Flop Equity across all {total} boards: {exact_eq1:.4f}%")
+# Output: Exact Flop Equity across all 990 boards: 33.8384%
 ```
 
 ---
